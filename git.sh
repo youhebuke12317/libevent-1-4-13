@@ -6,7 +6,12 @@
 #########################################################################
 #!/bin/bash
 
-git add .
+read -p "git add 时选择提交的文件：" filename
+if [ $filename = "." ]; then
+	git add .
+else
+	git add $filename
+fi
 
 read -p "git commit 时写下说明: " discp
 
