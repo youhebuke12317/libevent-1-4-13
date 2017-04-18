@@ -21,9 +21,8 @@ read -p "是否要同步到远程仓库(yes/no): " judge
 if [ $judge = yes ]; then 
 	git push origin master
 else
-	echo "没有提交到远程仓库"
+	echo "========>>>>没有提交到远程仓库"
 fi
 
-echo -e "\n-----------------------------------------------\n"
-
+echo -e "\n------------------ git status -----------------------\n"
 git status
