@@ -26,3 +26,4 @@ fi
 
 echo -e "\n------------------ git status -----------------------\n"
 git status
+echo ""
