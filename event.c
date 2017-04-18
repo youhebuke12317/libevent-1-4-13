@@ -696,12 +696,19 @@ event_pending(struct event *ev, short event, struct timeval *tv)
 	return (flags & event);
 }
 
+/*
+ * 参数：ev：指向要注册的事件；
+ * tv：超时时间；
+ * 函数将ev注册到ev->ev_base上，事件类型由ev->ev_events指明，如果注册成功，ev将被插入到已注册链表中；
+ * 如果tv不是NULL，则会同时注册定时事件，将ev添加到timer堆上；
+ * 如果其中有一步操作失败，那么函数保证没有事件会被注册，可以讲这相当于一个原子操作。
+ * */
 int
 event_add(struct event *ev, const struct timeval *tv)
 {
-	struct event_base *base = ev->ev_base;
+	struct event_base *base = ev->ev_base;		// 要注册到的event_base
 	const struct eventop *evsel = base->evsel;
-	void *evbase = base->evbase;
+	void *evbase = base->evbase;		// base使用的系统I/O策略
 	int res = 0;
 
 	event_debug((
@@ -717,23 +724,32 @@ event_add(struct event *ev, const struct timeval *tv)
 	/*
 	 * prepare for timeout insertion further below, if we get a
 	 * failure on any step, we should not change any state.
-	 */
+	 *
+	 * 新的timer事件，调用timer heap接口在堆上预留一个位置
+	 * 注：这样能保证该操作的原子性：
+	 * 向系统I/O机制注册可能会失败，而当在堆上预留成功后，
+	 * 定时事件的添加将肯定不会失败；
+	 * 而预留位置的可能结果是堆扩充，但是内部元素并不会改变
+	 * */
 	if (tv != NULL && !(ev->ev_flags & EVLIST_TIMEOUT)) {
 		if (min_heap_reserve(&base->timeheap,
 			1 + min_heap_size(&base->timeheap)) == -1)
 			return (-1);  /* ENOMEM == errno */
 	}
 
+	/* 如果事件ev不在已注册或者激活链表中，则调用evbase注册事件 */
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE))) {
 		res = evsel->add(evbase, ev);
-		if (res != -1)
+		if (res != -1)		// 注册成功，插入event到已注册链表中
 			event_queue_insert(base, ev, EVLIST_INSERTED);
 	}
 
 	/* 
 	 * we should change the timout state only if the previous event
 	 * addition succeeded.
+	 *
+	 * 准备添加定时事件
 	 */
 	if (res != -1 && tv != NULL) {
 		struct timeval now;
@@ -741,17 +757,24 @@ event_add(struct event *ev, const struct timeval *tv)
 		/* 
 		 * we already reserved memory above for the case where we
 		 * are not replacing an exisiting timeout.
+		 *
+		 * EVLIST_TIMEOUT表明event已经在定时器堆中了，删除旧的
 		 */
 		if (ev->ev_flags & EVLIST_TIMEOUT)
 			event_queue_remove(base, ev, EVLIST_TIMEOUT);
 
 		/* Check if it is active due to a timeout.  Rescheduling
 		 * this timeout before the callback can be executed
-		 * removes it from the active list. */
+		 * removes it from the active list. 
+		 *
+		 * 如果事件已经是就绪状态则从激活链表中删除
+		 * */
 		if ((ev->ev_flags & EVLIST_ACTIVE) &&
 		    (ev->ev_res & EV_TIMEOUT)) {
 			/* See if we are just active executing this
 			 * event in a loop
+			 *
+			 * 将ev_callback调用次数设置为0
 			 */
 			if (ev->ev_ncalls && ev->ev_pncalls) {
 				/* Abort loop */
@@ -761,6 +784,7 @@ event_add(struct event *ev, const struct timeval *tv)
 			event_queue_remove(base, ev, EVLIST_ACTIVE);
 		}
 
+		/* 计算时间，并插入到timer小根堆中 */
 		gettime(base, &now);
 		evutil_timeradd(&now, tv, &ev->ev_timeout);
 

@@ -182,6 +182,7 @@ typedef unsigned char u_char;
 typedef unsigned short u_short;
 #endif
 
+//辅助选项
 #define EVLIST_TIMEOUT	0x01
 #define EVLIST_INSERTED	0x02
 #define EVLIST_SIGNAL	0x04
@@ -211,27 +212,71 @@ struct {								\
 struct event_base;
 #ifndef EVENT_NO_STRUCT
 struct event {
-	TAILQ_ENTRY (event) ev_next;
-	TAILQ_ENTRY (event) ev_active_next;
-	TAILQ_ENTRY (event) ev_signal_next;
+	/* 
+	 * event关注的事件类型（I/O事件--EV_WRITE/EV_READ、定时事件--EV_TIMEOUT、信号--EV_SIGNAL、辅助选项）
+	 * 可以使用 “|” 进行运算，I/O事件和定时事件不能同时设置
+	 * */
+	short ev_events;	
+
+	/* 
+	 * ev_next  ev_active_next   ev_signal_next 双向链表的节点指针
+	 * */
+	// I/O事件在链表中的位置，此链表为“已注册事件链表”
+	TAILQ_ENTRY (event) ev_next;			
+	// libevent将所有的激活事件放入到链表active list中，然后遍历active list执行调度，
+	// ev_active_next就指明了event在active list中的位置；	
+	TAILQ_ENTRY (event) ev_active_next;		
+	// signal事件在signal事件链表中的位置
+	TAILQ_ENTRY (event) ev_signal_next;		
+
+	/* 
+	 * min_heap_idx和ev_timeout，
+	 * 如果是timeout事件，它们是event在小根堆中的索引和超时值，
+	 * libevent使用小根堆来管理定时事件
+	 * */
 	unsigned int min_heap_idx;	/* for managing timeouts */
-
-	struct event_base *ev_base;
-
-	int ev_fd;
-	short ev_events;
-	short ev_ncalls;
-	short *ev_pncalls;	/* Allows deletes in callback */
-
 	struct timeval ev_timeout;
 
-	int ev_pri;		/* smaller numbers are higher priority */
+	/*
+	 * ev_base该事件所属的反应堆实例，这是一个event_base结构体
+	 * */
+	struct event_base *ev_base;
 
+	/*
+	 * v_fd，对于I/O事件，是绑定的文件描述符；对于signal事件，是绑定的信号；
+	 * */
+	int ev_fd;
+	
+	/*
+	 * ev_callback，event的回调函数，被ev_base调用，执行事件处理程序，这是一个函数指针，原型为：
+	 * void (*ev_callback)(int fd, short events, void *arg)
+	 * 其中参数fd对应于ev_fd；events对应于ev_events；arg对应于ev_arg；
+	 * */
 	void (*ev_callback)(int, short, void *arg);
+	// ev_arg：void*，表明可以是任意类型的数据，在设置event时指定
 	void *ev_arg;
 
-	int ev_res;		/* result passed to event callback */
+	/*  
+	 * eb_flags：libevent用于标记event信息的字段，表明其当前的状态，可能的值有：
+	 *			#define EVLIST_TIMEOUT 0x01 // event在time堆中
+	 *			#define EVLIST_INSERTED 0x02 // event在已注册事件链表中
+	 *			#define EVLIST_SIGNAL 0x04 // 未见使用
+	 *			#define EVLIST_ACTIVE 0x08 // event在激活链表中
+	 *			#define EVLIST_INTERNAL 0x10 // 内部使用标记
+	 *			#define EVLIST_INIT 0x80 // event已被初始化
+	 *  */
 	int ev_flags;
+
+	// ev_ncalls：事件就绪执行时，调用ev_callback的次数，通常为1
+	short ev_ncalls;
+	// ev_pncalls：指针，通常指向ev_ncalls或者为NULL
+	short *ev_pncalls;	/* Allows deletes in callback */
+
+	// 较小的数字是较高的优先级
+	int ev_pri;		/* smaller numbers are higher priority */
+
+	// ev_res：记录了当前激活事件的类型
+	int ev_res;		/* result passed to event callback */
 };
 #else
 struct event;

@@ -35,38 +35,74 @@ extern "C" {
 #include "min_heap.h"
 #include "evsignal.h"
 
+/*
+ * 在libevent中，每种I/O demultiplex机制的实现都必须提供这五个函数接口，
+ * 来完成自身的初始化、销毁释放；对事件的注册、注销和分发。
+ * 比如对于epoll，libevent实现了5个对应的接口函数，
+ * 并在初始化时并将eventop的5个函数指针指向这5个函数，
+ * 那么程序就可以使用epoll作为I/O demultiplex机制了。
+ * */
 struct eventop {
 	const char *name;
-	void *(*init)(struct event_base *);
-	int (*add)(void *, struct event *);
-	int (*del)(void *, struct event *);
-	int (*dispatch)(struct event_base *, void *, struct timeval *);
-	void (*dealloc)(struct event_base *, void *);
+	void *(*init)(struct event_base *);		//初始化
+	int (*add)(void *, struct event *);		//注册事件
+	int (*del)(void *, st uct event *);		//删除事件
+	int (*dispatch)(struct event_base *, void *, struct timeval *);		//事件分发
+	void (*dealloc)(struct event_base *, void *);		//注销，释放资源
 	/* set if we need to reinitialize the event base */
 	int need_reinit;
 };
 
 struct event_base {
+	/*
+	 * evsel和evbase这两个字段的设置可能会让人有些迷惑，
+	 * 这里你可以把evsel和evbase看作是类和静态函数的关系，
+	 * 比如添加事件时的调用行为：evsel->add(evbase, ev)，实际执行操作的是evbase；
+	 * 这相当于class::add(instance, ev)，instance就是class的一个对象实例。
+	 *
+	 * evsel指向了全局变量static const struct eventop *eventops[]中的一个；
+	 * 前面也说过，libevent将系统提供的I/O demultiplex机制统一封装成了eventop结构；
+	 * 因此eventops[]包含了select、poll、kequeue和epoll等等其中的若干个全局实例对象。
+	 * evbase实际上是一个eventop实例对象；
+	 * */
 	const struct eventop *evsel;
 	void *evbase;
-	int event_count;		/* counts number of total events */
-	int event_count_active;	/* counts number of active events */
 
-	int event_gotterm;		/* Set to terminate loop */
-	int event_break;		/* Set to terminate loop immediately */
-
-	/* active event management */
+	/* 
+	 * active event management 
+	 * activequeues是一个二级指针，前面讲过libevent支持事件优先级，因此可以把它看作是数组，
+	 * 其中的元素activequeues[priority]是一个链表，链表的每个节点指向一个优先级为priority的就绪事件event
+	 * */
 	struct event_list **activequeues;
 	int nactivequeues;
+	
+	/* 
+	 * eventqueue，链表，保存了所有的注册事件event的指针
+	 * */
+	struct event_list eventqueue;
 
-	/* signal handling info */
+	/* 
+	 * signal handling info 
+	 * sig是由来管理信号的结构体，将在后面信号处理时专门讲解
+	 * */
 	struct evsignal_info sig;
 
-	struct event_list eventqueue;
-	struct timeval event_tv;
+	// 总事件数
+	int event_count;		/* counts number of total events */
+	// 就绪事件的数量
+	int event_count_active;	/* counts number of active events */
 
+	// 设置为终止循环
+	int event_gotterm;		/* Set to terminate loop */
+	// 设置为立即终止循环
+	int event_break;		/* Set to terminate loop immediately */
+
+
+	// timeheap是管理定时事件的小根堆，将在后面定时事件处理时专门讲解
 	struct min_heap timeheap;
 
+	// vent_tv和tv_cache是libevent用于时间管理的变量
+	struct timeval event_tv;
 	struct timeval tv_cache;
 };
 
