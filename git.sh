@@ -12,6 +12,9 @@ read -p "git commit 时写下说明: " discp
 
 git commit -m $discp
 
-
+read -p "是否要同步到远程仓库(yes/no): " judge
+if [ $judge = yes ]; then 
+	git push origin master
+fi
 
 
