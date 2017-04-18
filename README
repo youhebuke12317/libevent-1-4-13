@@ -1,4 +1,5 @@
-＃zl: 2017-4-18libevent-1-4-13
+# zl: [2017-4-18]libevent-1-4-13
+# 为了更好的学习和阅读，将其加入到创库
 To build libevent, type
 
 $ ./configure && make
