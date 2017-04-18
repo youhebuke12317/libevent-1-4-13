@@ -22,4 +22,6 @@ if [ $judge = yes ]; then
 	git push origin master
 fi
 
+echo -e "\n\n-----------------------------------------------\n\n"
 
+git status
