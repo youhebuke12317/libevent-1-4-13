@@ -200,6 +200,14 @@ _evsignal_set_handler(struct event_base *base,
 	return (0);
 }
 
+/*
+ * 注册signal事件是通过evsignal_add(struct event *ev)函数完成的，
+ * libevent对所有的信号注册同一个处理函数evsignal_handler()，该函数将在下一段介绍，注册过程如下：
+ *			1 取得ev要注册到的信号signo；
+ *			2 如果信号signo未被注册，那么就为signo注册信号处理函数evsignal_handler()；
+ *			3 如果事件ev_signal还没哟注册，就注册ev_signal事件；
+ *			4 将事件ev添加到signo的event链表中；
+ * */
 int
 evsignal_add(struct event *ev)
 {
@@ -209,8 +217,16 @@ evsignal_add(struct event *ev)
 
 	if (ev->ev_events & (EV_READ|EV_WRITE))
 		event_errx(1, "%s: EV_SIGNAL incompatible use", __func__);
+
+	/* 
+	 * #define EVENT_SIGNAL(ev)	(int)(ev)->ev_fd
+	 *
+	 * v_fd，对于I/O事件，是绑定的文件描述符；对于signal事件，是绑定的信号；
+	 * */
 	evsignal = EVENT_SIGNAL(ev);
 	assert(evsignal >= 0 && evsignal < NSIG);
+
+	// 数组，evsigevents[signo]表示注册到信号signo的事件链表
 	if (TAILQ_EMPTY(&sig->evsigevents[evsignal])) {
 		event_debug(("%s: %p: changing signal handler", __func__, ev));
 		if (_evsignal_set_handler(
@@ -263,6 +279,10 @@ _evsignal_restore_handler(struct event_base *base, int evsignal)
 	return ret;
 }
 
+/*
+ * 从signo上注销一个已注册的signal事件就更简单了，直接从其已注册事件的链表中移除即可。
+ * 如果事件链表已空，那么就恢复旧的处理函数
+ * */
 int
 evsignal_del(struct event *ev)
 {
@@ -283,10 +303,14 @@ evsignal_del(struct event *ev)
 	return (_evsignal_restore_handler(ev->ev_base, EVENT_SIGNAL(ev)));
 }
 
+/*
+ * 处理函数evsignal_handler()函数做的事情很简单，
+ * 就是记录信号的发生次数，并通知event_base有信号触发
+ * */
 static void
 evsignal_handler(int sig)
 {
-	int save_errno = errno;
+	int save_errno = errno;		// 不覆盖原来的错误代码
 
 	if (evsignal_base == NULL) {
 		event_warn(
@@ -295,16 +319,22 @@ evsignal_handler(int sig)
 		return;
 	}
 
+	// 记录信号sig的触发次数，并设置event触发标记
 	evsignal_base->sig.evsigcaught[sig]++;
 	evsignal_base->sig.evsignal_caught = 1;
 
 #ifndef HAVE_SIGACTION
-	signal(sig, evsignal_handler);
+	signal(sig, evsignal_handler);    // 重新注册信号
 #endif
 
-	/* Wake up our notification mechanism */
+	/* 
+	 * Wake up our notification mechanism 
+	 *
+	 * 向写socket写一个字节数据，触发event_base的I/O事件，
+	 * 从而通知其有信号触发，需要处理
+	 * */
 	send(evsignal_base->sig.ev_signal_pair[0], "a", 1, 0);
-	errno = save_errno;
+	errno = save_errno;		// 错误代码
 }
 
 void

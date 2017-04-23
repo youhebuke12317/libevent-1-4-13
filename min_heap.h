@@ -103,8 +103,17 @@ int min_heap_erase(min_heap_t* s, struct event* e)
     return -1;
 }
 
+
 int min_heap_reserve(min_heap_t* s, unsigned n)
 {
+	/*
+	 * 结构体定义：
+	 * typedef struct min_heap {
+	 *		struct event** p;
+	 *		unsigned a;
+	 *		unsigned n;
+	 * }min_heap_t;
+	 * */
     if(s->a < n)
     {
         struct event** p;

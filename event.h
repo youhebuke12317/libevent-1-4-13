@@ -218,6 +218,11 @@ struct event {
 	 * */
 	short ev_events;	
 
+	/*
+	 * ev_base该事件所属的反应堆实例，这是一个event_base结构体
+	 * */
+	struct event_base *ev_base;
+
 	/* 
 	 * ev_next  ev_active_next   ev_signal_next 双向链表的节点指针
 	 * */
@@ -237,10 +242,6 @@ struct event {
 	unsigned int min_heap_idx;	/* for managing timeouts */
 	struct timeval ev_timeout;
 
-	/*
-	 * ev_base该事件所属的反应堆实例，这是一个event_base结构体
-	 * */
-	struct event_base *ev_base;
 
 	/*
 	 * v_fd，对于I/O事件，是绑定的文件描述符；对于signal事件，是绑定的信号；

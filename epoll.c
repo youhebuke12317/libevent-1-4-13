@@ -203,10 +203,10 @@ epoll_dispatch(struct event_base *base, void *arg, struct timeval *tv)
 			return (-1);
 		}
 
-		evsignal_process(base);
+		evsignal_process(base);		// 处理signal事件
 		return (0);
 	} else if (base->sig.evsignal_caught) {
-		evsignal_process(base);
+		evsignal_process(base);		// 处理signal事件
 	}
 
 	event_debug(("%s: epoll_wait reports %d", __func__, res));

@@ -61,6 +61,28 @@
 #include "evutil.h"
 #include "log.h"
 
+/********************************************************************
+ *
+ * 创建一个socket pair并不是复杂的操作:
+ *
+ *							开始
+ *							 |
+ *					  创建监听描述符
+ *					         |
+ *			绑定到本地回环地址，开始监听本地连接
+ *							 |
+ *				创建一个连接socket-----sock1
+ *							 |
+ *			调用connect()连接到监听socket监听的端口
+ *							 | 
+ *	   调用accept()取得连接成功后返回的socket----sock2
+ *							 |
+ *		将sock1作为写socket, sock2作为读socket: 返回
+ *							 | 
+ *							结束
+ *
+ *
+ ********************************************************************/
 int
 evutil_socketpair(int family, int type, int protocol, int fd[2])
 {
@@ -95,6 +117,9 @@ evutil_socketpair(int family, int type, int protocol, int fd[2])
 		return -1;
 	}
 
+	/* 
+	 * 创建监听描述符, 并绑定本地回环地址，开始监听本地连接 
+	 * */
 	listener = socket(AF_INET, type, 0);
 	if (listener < 0)
 		return -1;
@@ -108,19 +133,29 @@ evutil_socketpair(int family, int type, int protocol, int fd[2])
 	if (listen(listener, 1) == -1)
 		goto tidy_up_and_fail;
 
+	/*
+	 * 创建一个连接描述符
+	 * */
 	connector = socket(AF_INET, type, 0);
 	if (connector < 0)
 		goto tidy_up_and_fail;
+
 	/* We want to find out the port number to connect to.  */
 	size = sizeof(connect_addr);
+	// 在以端口号为0调用bind（告知内核去选择本地临时端口号）后，getsockname用于返回由内核赋予的本地端口号。
+	// 获取listener描述符绑定的地址
 	if (getsockname(listener, (struct sockaddr *) &connect_addr, &size) == -1)
 		goto tidy_up_and_fail;
 	if (size != sizeof (connect_addr))
 		goto abort_tidy_up_and_fail;
+	// 连接监听socket
 	if (connect(connector, (struct sockaddr *) &connect_addr,
 				sizeof(connect_addr)) == -1)
 		goto tidy_up_and_fail;
 
+	/*
+	 * 调用accept()创建连接描述符
+	 * */
 	size = sizeof(listen_addr);
 	acceptor = accept(listener, (struct sockaddr *) &listen_addr, &size);
 	if (acceptor < 0)
@@ -128,15 +163,22 @@ evutil_socketpair(int family, int type, int protocol, int fd[2])
 	if (size != sizeof(listen_addr))
 		goto abort_tidy_up_and_fail;
 	EVUTIL_CLOSESOCKET(listener);
-	/* Now check we are talking to ourself by matching port and host on the
-	   two sockets.	 */
+
+	/* 
+	 * Now check we are talking to ourself by matching port and host on the 
+	 * two sockets.	 
+	 * 
+	 * 获取connector连接描述符的地址 
+	 * */
 	if (getsockname(connector, (struct sockaddr *) &connect_addr, &size) == -1)
 		goto tidy_up_and_fail;
+
 	if (size != sizeof (connect_addr)
 		|| listen_addr.sin_family != connect_addr.sin_family
 		|| listen_addr.sin_addr.s_addr != connect_addr.sin_addr.s_addr
 		|| listen_addr.sin_port != connect_addr.sin_port)
 		goto abort_tidy_up_and_fail;
+	
 	fd[0] = connector;
 	fd[1] = acceptor;
 
